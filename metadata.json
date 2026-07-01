@@ -1,0 +1,6 @@
+{
+  "name": "Zongoire Health Club System",
+  "description": "An adolescent health club management system for member registration, attendance, health education, and reporting with Google Sheets integration and PDF export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
