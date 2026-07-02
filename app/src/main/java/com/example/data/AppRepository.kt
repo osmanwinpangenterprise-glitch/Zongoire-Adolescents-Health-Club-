@@ -61,6 +61,10 @@ class AppRepository private constructor(context: Context) {
         memberDao.insertMember(member)
     }
 
+    suspend fun updateMember(member: Member) = withContext(Dispatchers.IO) {
+        memberDao.updateMember(member)
+    }
+
     suspend fun recordAttendance(attendance: Attendance): Long = withContext(Dispatchers.IO) {
         attendanceDao.insertAttendance(attendance)
     }
@@ -75,6 +79,11 @@ class AppRepository private constructor(context: Context) {
 
     suspend fun recordBehaviorAssessment(assessment: BehaviorAssessment): Long = withContext(Dispatchers.IO) {
         behaviorAssessmentDao.insertBehaviorAssessment(assessment)
+    }
+
+    suspend fun recordAttendanceOnline(attendance: Attendance, webAppUrl: String): Boolean = withContext(Dispatchers.IO) {
+        if (webAppUrl.isBlank()) return@withContext false
+        postToGoogleSheets(webAppUrl, "ATTENDANCE", attendanceToMap(attendance))
     }
 
     // Google Sheets Sync Method

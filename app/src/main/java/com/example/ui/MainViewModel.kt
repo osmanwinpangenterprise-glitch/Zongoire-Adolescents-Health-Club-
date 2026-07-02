@@ -187,13 +187,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         updateNextMemberId()
     }
 
+    val isEditingMember = MutableStateFlow(false)
+    val editingMemberId = MutableStateFlow<String?>(null)
+
+    fun startEditingMember(member: Member) {
+        isEditingMember.value = true
+        editingMemberId.value = member.memberId
+        
+        regFullName.value = member.fullName
+        regDob.value = member.dob
+        regGender.value = member.gender
+        regCommunity.value = member.community
+        regReligion.value = member.religion
+        regSchoolStatus.value = member.schoolStatus
+        regSchoolName.value = member.schoolName
+        regClassYear.value = member.classYear
+        regOccupation.value = member.occupation
+        regGuardianName.value = member.guardianName
+        regRelationship.value = member.relationship
+        regContactNumber.value = member.contactNumber
+        regParentAware.value = member.parentAware
+        regConsentSigned.value = member.consentSigned
+        regHealthConditionKnown.value = member.healthConditionKnown
+        regHealthConditionDetails.value = member.healthConditionDetails
+        regVisitedChpsLast6Months.value = member.visitedChpsLast6Months
+        regNhisCard.value = member.nhisCard
+        regOathTaken.value = member.oathTaken
+        regMembershipCardIssued.value = member.membershipCardIssued
+        regMembershipTier.value = member.membershipTier
+        
+        navigateTo(Screen.RegisterMember)
+    }
+
     fun navigateTo(screen: Screen) {
         _currentScreen.value = screen
         // Reset lte messages
         _syncStatus.value = null
         _pdfGenerationStatus.value = null
         if (screen == Screen.RegisterMember) {
-            updateNextMemberId()
+            if (!isEditingMember.value) {
+                resetRegisterForm()
+                updateNextMemberId()
+            }
+        } else {
+            isEditingMember.value = false
+            editingMemberId.value = null
         }
     }
 
@@ -324,6 +362,81 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun saveEditedMember(onSuccess: () -> Unit, onError: (String) -> Unit) {
+        val currentUserRole = _currentUser.value?.role
+        if (currentUserRole == UserRole.VIEWER) {
+            onError("Access Denied: Viewers cannot edit members.")
+            return
+        }
+
+        val name = regFullName.value.trim()
+        val dob = regDob.value.trim()
+        val community = regCommunity.value.trim()
+        val religion = regReligion.value.trim()
+        val contact = regContactNumber.value.trim()
+        val guardian = regGuardianName.value.trim()
+        val rel = regRelationship.value.trim()
+
+        if (name.isBlank() || dob.isBlank() || community.isBlank() || contact.isBlank() || guardian.isBlank()) {
+            onError("Please fill in all required fields (Name, DOB, Community, Contact, Guardian)")
+            return
+        }
+
+        val editId = editingMemberId.value
+        if (editId == null) {
+            onError("Error: No member selected for editing.")
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val existingMember = members.value.find { it.memberId == editId }
+                if (existingMember == null) {
+                    onError("Error: Member not found in database.")
+                    return@launch
+                }
+
+                val age = calculateAge(dob)
+                val ageGroup = if (age <= 14) "Junior (10-14)" else "Senior (15-19)"
+
+                val updated = existingMember.copy(
+                    fullName = name,
+                    dob = dob,
+                    age = age,
+                    gender = regGender.value,
+                    ageGroup = ageGroup,
+                    community = community,
+                    religion = religion,
+                    schoolStatus = regSchoolStatus.value,
+                    schoolName = if (regSchoolStatus.value == "Currently in school") regSchoolName.value.trim() else "",
+                    classYear = if (regSchoolStatus.value == "Currently in school") regClassYear.value.trim() else "",
+                    occupation = if (regSchoolStatus.value != "Currently in school") regOccupation.value.trim() else "",
+                    guardianName = guardian,
+                    relationship = rel,
+                    contactNumber = contact,
+                    parentAware = regParentAware.value,
+                    consentSigned = regConsentSigned.value,
+                    healthConditionKnown = regHealthConditionKnown.value,
+                    healthConditionDetails = if (regHealthConditionKnown.value == "Yes") regHealthConditionDetails.value.trim() else "",
+                    visitedChpsLast6Months = regVisitedChpsLast6Months.value,
+                    nhisCard = regNhisCard.value,
+                    oathTaken = regOathTaken.value,
+                    membershipCardIssued = regMembershipCardIssued.value,
+                    membershipTier = regMembershipTier.value,
+                    isSynced = false
+                )
+
+                repository.updateMember(updated)
+                isEditingMember.value = false
+                editingMemberId.value = null
+                resetRegisterForm()
+                onSuccess()
+            } catch (e: Exception) {
+                onError("Failed to update member details: ${e.message}")
+            }
+        }
+    }
+
     private fun resetRegisterForm() {
         regFullName.value = ""
         regDob.value = ""
@@ -364,7 +477,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     status = status,
                     facilitator = _currentUser.value?.username ?: "Unknown"
                 )
-                repository.recordAttendance(att)
+                
+                var isSynced = false
+                val url = _webAppUrl.value
+                if (url.isNotBlank()) {
+                    try {
+                        isSynced = repository.recordAttendanceOnline(att, url)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                
+                val finalAtt = att.copy(isSynced = isSynced)
+                repository.recordAttendance(finalAtt)
+                
                 onSuccess()
             } catch (e: Exception) {
                 onError("Failed to record attendance: ${e.message}")

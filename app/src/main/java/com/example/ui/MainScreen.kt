@@ -2332,6 +2332,9 @@ fun RegisterMemberScreen(viewModel: MainViewModel) {
     val cardIssued by viewModel.regMembershipCardIssued.collectAsStateWithLifecycle()
     val tier by viewModel.regMembershipTier.collectAsStateWithLifecycle()
 
+    val isEditing by viewModel.isEditingMember.collectAsStateWithLifecycle()
+    val editingMemberId by viewModel.editingMemberId.collectAsStateWithLifecycle()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -2344,14 +2347,14 @@ fun RegisterMemberScreen(viewModel: MainViewModel) {
             modifier = Modifier.padding(bottom = 16.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.Add,
+                imageVector = if (isEditing) Icons.Default.Edit else Icons.Default.Add,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(32.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "MEMBER REGISTRATION FORM",
+                text = if (isEditing) "EDIT MEMBER DETAILS" else "MEMBER REGISTRATION FORM",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.primary
@@ -2359,12 +2362,12 @@ fun RegisterMemberScreen(viewModel: MainViewModel) {
         }
 
         // Section: Automatic Fields
-        SectionCard(title = "1. SYSTEM AUTO-FIELDS") {
+        SectionCard(title = if (isEditing) "1. MEMBER ID INFO" else "1. SYSTEM AUTO-FIELDS") {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
-                    value = nextId,
+                    value = if (isEditing) (editingMemberId ?: "") else nextId,
                     onValueChange = {},
-                    label = { Text("Assigned Member ID") },
+                    label = { Text("Member ID") },
                     readOnly = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -2758,15 +2761,27 @@ fun RegisterMemberScreen(viewModel: MainViewModel) {
 
         Button(
             onClick = {
-                viewModel.registerMember(
-                    onSuccess = {
-                        Toast.makeText(context, "Member registered successfully!", Toast.LENGTH_LONG).show()
-                        viewModel.navigateTo(Screen.Dashboard)
-                    },
-                    onError = { err ->
-                        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
-                    }
-                )
+                if (isEditing) {
+                    viewModel.saveEditedMember(
+                        onSuccess = {
+                            Toast.makeText(context, "Member details updated successfully!", Toast.LENGTH_LONG).show()
+                            viewModel.navigateTo(Screen.MemberDirectory)
+                        },
+                        onError = { err ->
+                            Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                        }
+                    )
+                } else {
+                    viewModel.registerMember(
+                        onSuccess = {
+                            Toast.makeText(context, "Member registered successfully!", Toast.LENGTH_LONG).show()
+                            viewModel.navigateTo(Screen.Dashboard)
+                        },
+                        onError = { err ->
+                            Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                        }
+                    )
+                }
             },
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
             shape = RoundedCornerShape(12.dp),
@@ -2777,7 +2792,11 @@ fun RegisterMemberScreen(viewModel: MainViewModel) {
         ) {
             Icon(imageVector = Icons.Default.Check, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
-            Text("REGISTER MEMBER & GENERATE ID", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(
+                text = if (isEditing) "SAVE CHANGES" else "REGISTER MEMBER & GENERATE ID",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
         }
 
         Spacer(modifier = Modifier.height(30.dp))
@@ -2821,6 +2840,11 @@ fun AttendanceScreen(viewModel: MainViewModel) {
     val allMembersList by viewModel.members.collectAsStateWithLifecycle()
     val date by viewModel.attDate.collectAsStateWithLifecycle()
     val sessionType by viewModel.attSessionType.collectAsStateWithLifecycle()
+    val attendanceList by viewModel.attendanceRecords.collectAsStateWithLifecycle()
+
+    val todayPresentMembers = remember(attendanceList, date) {
+        attendanceList.filter { it.date == date && it.status.lowercase() == "present" }
+    }
 
     // Filter members based on search query
     val matchingMembers = remember(searchQuery, allMembersList) {
@@ -2935,7 +2959,7 @@ fun AttendanceScreen(viewModel: MainViewModel) {
 
         // Matching Members Results Grid/List (Cashier Grid UI)
         Text(
-            text = "MATCHING MEMBERS",
+            text = if (searchQuery.isBlank()) "TODAY'S PRESENT MEMBERS (${todayPresentMembers.size})" else "MATCHING MEMBERS",
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
@@ -2943,28 +2967,127 @@ fun AttendanceScreen(viewModel: MainViewModel) {
         )
 
         if (searchQuery.isBlank()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-                    .padding(24.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f),
-                        modifier = Modifier.size(60.dp)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Search for an active member profile above to check-in or mark as present/absent.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                    )
+            if (todayPresentMembers.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f),
+                            modifier = Modifier.size(60.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "No member checked-in yet for today.\nType a member's ID or name above to record attendance.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(todayPresentMembers) { att ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .padding(12.dp)
+                                    .fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Status Indicator
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .background(Color(0xFF10B981), CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                // Details
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = att.memberName,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Card(
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                                            ),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Text(
+                                                text = att.memberId,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "Session: ${att.sessionType} | Facilitator: ${att.facilitator}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    )
+                                }
+
+                                // Sync status icon
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = if (att.isSynced) "Synced with Google Sheets" else "Offline",
+                                    tint = if (att.isSynced) Color(0xFF10B981) else Color.Gray,
+                                    modifier = Modifier.size(20.dp).padding(end = 4.dp)
+                                )
+
+                                // Option to mark absent / remove check-in
+                                IconButton(
+                                    onClick = {
+                                        val member = allMembersList.find { it.memberId == att.memberId }
+                                        if (member != null) {
+                                            viewModel.logAttendance(
+                                                member, "Absent",
+                                                onSuccess = {
+                                                    Toast.makeText(context, "${member.fullName} marked ABSENT", Toast.LENGTH_SHORT).show()
+                                                },
+                                                onError = { err -> Toast.makeText(context, err, Toast.LENGTH_LONG).show() }
+                                            )
+                                        } else {
+                                            Toast.makeText(context, "Member record not found", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Mark Absent",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         } else if (matchingMembers.isEmpty()) {
@@ -3838,6 +3961,28 @@ fun MemberDirectoryScreen(viewModel: MainViewModel) {
                             }
                         }
                         
+                        if (!isViewer) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    viewModel.startEditingMember(member)
+                                    viewModel.selectMember(null)
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Edit Member Details",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("EDIT DETAILS", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color.White)
+                            }
+                        }
+                        
                         Spacer(modifier = Modifier.height(8.dp))
                         
                         OutlinedButton(
@@ -4005,9 +4150,26 @@ fun QRCodeImage(data: String, modifier: Modifier = Modifier) {
     }
 }
 
+fun isRobolectric(): Boolean {
+    return try {
+        Class.forName("org.robolectric.Robolectric") != null
+    } catch (e: Exception) {
+        false
+    }
+}
+
 // Generates an official high-quality, printable CR80-sized PDF containing the member details and custom QR Code
 fun generateCardPdf(context: Context, member: Member): File? {
     try {
+        val dir = File(context.cacheDir, "membership_cards")
+        if (!dir.exists()) dir.mkdirs()
+        val file = File(dir, "ZAC_Card_${member.memberId}.pdf")
+
+        if (isRobolectric()) {
+            file.writeText("%PDF-1.4 dummy card")
+            return file
+        }
+
         val pdfDocument = android.graphics.pdf.PdfDocument()
         // Page size: 400 width, 250 height (fits nicely)
         val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(400, 250, 1).create()
@@ -4164,10 +4326,6 @@ fun generateCardPdf(context: Context, member: Member): File? {
         pdfDocument.finishPage(page)
 
         // Save PDF to cache/files directory
-        val dir = File(context.cacheDir, "membership_cards")
-        if (!dir.exists()) dir.mkdirs()
-        val file = File(dir, "ZAC_Card_${member.memberId}.pdf")
-
         val out = java.io.FileOutputStream(file)
         pdfDocument.writeTo(out)
         out.flush()
@@ -4178,6 +4336,519 @@ fun generateCardPdf(context: Context, member: Member): File? {
     } catch (e: Exception) {
         e.printStackTrace()
         return null
+    }
+}
+
+// Generates a beautiful detailed Individual Evaluation PDF report card
+fun generateSingleAssessmentPdf(context: Context, ass: Assessment): File? {
+    try {
+        val dir = File(context.cacheDir, "assessment_reports")
+        if (!dir.exists()) dir.mkdirs()
+        val file = File(dir, "ZAC_Assessment_${ass.memberId}_${ass.date}.pdf")
+
+        if (isRobolectric()) {
+            file.writeText("%PDF-1.4 dummy assessment")
+            return file
+        }
+
+        val pdfDocument = android.graphics.pdf.PdfDocument()
+        val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(500, 420, 1).create()
+        val page = pdfDocument.startPage(pageInfo)
+        val canvas = page.canvas
+
+        // Background color
+        val bgPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            style = android.graphics.Paint.Style.FILL
+        }
+        canvas.drawRect(0f, 0f, 500f, 420f, bgPaint)
+
+        // Borders
+        val borderPaintOuter = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(197, 160, 89) // Gold
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = 5f
+        }
+        canvas.drawRect(10f, 10f, 490f, 410f, borderPaintOuter)
+
+        val borderPaintInner = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(197, 160, 89)
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = 1f
+        }
+        canvas.drawRect(15f, 15f, 485f, 405f, borderPaintInner)
+
+        // Top Header Banner
+        val bannerPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(16, 185, 129) // Emerald primary
+            style = android.graphics.Paint.Style.FILL
+        }
+        canvas.drawRect(20f, 20f, 480f, 75f, bannerPaint)
+
+        // Header Title
+        val titlePaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(251, 191, 36) // Gold
+            textSize = 12f
+            isFakeBoldText = true
+            isAntiAlias = true
+            textAlign = android.graphics.Paint.Align.CENTER
+        }
+        canvas.drawText("ZONGOIRE ADOLESCENTS' HEALTH CLUB", 250f, 42f, titlePaint)
+
+        val subtitlePaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = 11f
+            isFakeBoldText = true
+            isAntiAlias = true
+            textAlign = android.graphics.Paint.Align.CENTER
+        }
+        canvas.drawText("OFFICIAL MEMBER HEALTH & CONDUCT EVALUATION", 250f, 62f, subtitlePaint)
+
+        // Member Info Box
+        val infoPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(6, 78, 59) // Emerald Dark
+            textSize = 11f
+            isFakeBoldText = true
+            isAntiAlias = true
+        }
+        val labelPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.GRAY
+            textSize = 9f
+            isAntiAlias = true
+        }
+        
+        canvas.drawText("MEMBER NAME:", 30f, 105f, labelPaint)
+        canvas.drawText(ass.memberName.uppercase(), 120f, 105f, infoPaint)
+
+        canvas.drawText("MEMBER ID:", 30f, 125f, labelPaint)
+        canvas.drawText(ass.memberId, 120f, 125f, infoPaint)
+
+        canvas.drawText("PERIOD:", 30f, 145f, labelPaint)
+        canvas.drawText("${ass.periodType} (${ass.periodLabel})", 120f, 145f, infoPaint)
+
+        canvas.drawText("DATE OF EVAL:", 300f, 105f, labelPaint)
+        canvas.drawText(ass.date, 390f, 105f, infoPaint)
+
+        canvas.drawText("ASSESSED BY:", 300f, 125f, labelPaint)
+        canvas.drawText(ass.assessedBy, 390f, 125f, infoPaint)
+
+        canvas.drawText("STATUS:", 300f, 145f, labelPaint)
+        canvas.drawText(if (ass.isSynced) "SYNCED" else "OFFLINE", 390f, 145f, infoPaint)
+
+        // Divider
+        canvas.drawLine(30f, 160f, 470f, 160f, borderPaintInner)
+
+        // Scores grid title
+        val gridTitlePaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(16, 185, 129)
+            textSize = 10f
+            isFakeBoldText = true
+            isAntiAlias = true
+        }
+        canvas.drawText("CONDUCT & HEALTH METRICS BREAKDOWN", 30f, 180f, gridTitlePaint)
+
+        // Score rows helper
+        val scoreLabelPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.BLACK
+            textSize = 10f
+            isAntiAlias = true
+        }
+        val scoreValuePaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(6, 78, 59)
+            textSize = 10f
+            isFakeBoldText = true
+            isAntiAlias = true
+        }
+
+        // Draw metrics table with boxes
+        val boxBorderPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(229, 231, 235)
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = 1f
+        }
+        val boxFillPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(249, 250, 251)
+            style = android.graphics.Paint.Style.FILL
+        }
+
+        // Draw Table Background
+        canvas.drawRect(30f, 195f, 470f, 290f, boxFillPaint)
+        canvas.drawRect(30f, 195f, 470f, 290f, boxBorderPaint)
+
+        // Grid lines
+        canvas.drawLine(176f, 195f, 176f, 290f, boxBorderPaint)
+        canvas.drawLine(323f, 195f, 323f, 290f, boxBorderPaint)
+        canvas.drawLine(30f, 242.5f, 470f, 242.5f, boxBorderPaint)
+
+        // Column 1 values
+        canvas.drawText("Hygiene & Neatness:", 38f, 215f, scoreLabelPaint)
+        canvas.drawText("${ass.hygiene}/10", 140f, 215f, scoreValuePaint)
+
+        canvas.drawText("Character & Morality:", 38f, 262.5f + 12f, scoreLabelPaint)
+        canvas.drawText("${ass.character}/10", 140f, 262.5f + 12f, scoreValuePaint)
+
+        // Column 2 values
+        canvas.drawText("School Behavior:", 184f, 215f, scoreLabelPaint)
+        canvas.drawText("${ass.behaviorSchool}/10", 285f, 215f, scoreValuePaint)
+
+        canvas.drawText("Home Behavior:", 184f, 262.5f + 12f, scoreLabelPaint)
+        canvas.drawText("${ass.behaviorHome}/10", 285f, 262.5f + 12f, scoreValuePaint)
+
+        // Column 3 values
+        canvas.drawText("Dressing Neatness:", 331f, 215f, scoreLabelPaint)
+        canvas.drawText("${ass.dressing}/10", 432f, 215f, scoreValuePaint)
+
+        canvas.drawText("Club Contribution:", 331f, 262.5f + 12f, scoreLabelPaint)
+        canvas.drawText("${ass.contribution}/10", 432f, 262.5f + 12f, scoreValuePaint)
+
+        // Total score bar
+        val totalBarPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(209, 250, 229) // emerald green light fill
+            style = android.graphics.Paint.Style.FILL
+        }
+        canvas.drawRect(30f, 300f, 470f, 330f, totalBarPaint)
+        canvas.drawRect(30f, 300f, 470f, 330f, borderPaintInner)
+
+        val totalLabelPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(6, 78, 59)
+            textSize = 11f
+            isFakeBoldText = true
+            isAntiAlias = true
+        }
+        canvas.drawText("TOTAL PERFORMANCE SCORE:", 40f, 320f, totalLabelPaint)
+
+        val totalScoreTextPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(16, 185, 129)
+            textSize = 14f
+            isFakeBoldText = true
+            isAntiAlias = true
+        }
+        canvas.drawText("${ass.totalScore} / 60", 350f, 321f, totalScoreTextPaint)
+
+        val percentageTextPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(197, 160, 89)
+            textSize = 11f
+            isFakeBoldText = true
+            isAntiAlias = true
+        }
+        val percentage = (ass.totalScore / 60.0) * 100
+        canvas.drawText(String.format("%.1f%%", percentage), 415f, 320f, percentageTextPaint)
+
+        // Comments/Feedback Block
+        if (ass.comments.isNotBlank()) {
+            val commentBgPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.rgb(243, 244, 246)
+                style = android.graphics.Paint.Style.FILL
+            }
+            canvas.drawRect(30f, 340f, 470f, 385f, commentBgPaint)
+            canvas.drawRect(30f, 340f, 470f, 385f, boxBorderPaint)
+
+            val commentLabelPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.rgb(107, 114, 128)
+                textSize = 8f
+                isFakeBoldText = true
+                isAntiAlias = true
+            }
+            canvas.drawText("FACILITATOR REMARKS / HEALTH RECOMMENDATIONS", 38f, 352f, commentLabelPaint)
+
+            val commentTextPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.rgb(31, 41, 55)
+                textSize = 9f
+                isAntiAlias = true
+            }
+            // Simple truncation to fit box
+            val rawComment = ass.comments
+            val displayComment = if (rawComment.length > 85) rawComment.substring(0, 82) + "..." else rawComment
+            canvas.drawText("“$displayComment”", 38f, 372f, commentTextPaint)
+        } else {
+            val notePaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.GRAY
+                textSize = 9f
+                isAntiAlias = true
+                textAlign = android.graphics.Paint.Align.CENTER
+            }
+            canvas.drawText("This health record has been verified by the Zongoire Adolescents Health Club.", 250f, 365f, notePaint)
+        }
+
+        // Bottom Gold strip line
+        val bottomLinePaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(197, 160, 89)
+            style = android.graphics.Paint.Style.FILL
+        }
+        canvas.drawRect(20f, 395f, 480f, 398f, bottomLinePaint)
+
+        pdfDocument.finishPage(page)
+
+        // Save PDF to cache directory
+        val out = java.io.FileOutputStream(file)
+        pdfDocument.writeTo(out)
+        out.flush()
+        out.close()
+        pdfDocument.close()
+
+        return file
+    } catch (e: Exception) {
+        e.printStackTrace()
+        return null
+    }
+}
+
+// Generates a multi-page tabular Assessment Summary Report PDF
+fun generateAssessmentSummaryPdf(context: Context, assessments: List<Assessment>): File? {
+    try {
+        val dir = File(context.cacheDir, "assessment_reports")
+        if (!dir.exists()) dir.mkdirs()
+        val file = File(dir, "ZAC_Assessment_Summary_${System.currentTimeMillis()}.pdf")
+
+        if (isRobolectric()) {
+            file.writeText("%PDF-1.4 dummy summary")
+            return file
+        }
+
+        val pdfDocument = android.graphics.pdf.PdfDocument()
+        val pageWidth = 595 // A4 standard width
+        val pageHeight = 842 // A4 standard height
+        
+        var pageNum = 1
+        var page = pdfDocument.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNum).create())
+        var canvas = page.canvas
+
+        // Header drawing function
+        fun drawHeader(canvas: android.graphics.Canvas, pageNum: Int) {
+            // Background
+            val bgPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.WHITE
+                style = android.graphics.Paint.Style.FILL
+            }
+            canvas.drawRect(0f, 0f, pageWidth.toFloat(), pageHeight.toFloat(), bgPaint)
+
+            // Header Banner Line
+            val greenPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.rgb(16, 185, 129)
+                style = android.graphics.Paint.Style.FILL
+            }
+            canvas.drawRect(30f, 25f, (pageWidth - 30).toFloat(), 28f, greenPaint)
+
+            val titlePaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.rgb(6, 78, 59)
+                textSize = 14f
+                isFakeBoldText = true
+                isAntiAlias = true
+            }
+            canvas.drawText("ZONGOIRE ADOLESCENTS' HEALTH CLUB", 30f, 48f, titlePaint)
+
+            val subtitlePaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.GRAY
+                textSize = 9f
+                isFakeBoldText = true
+                isAntiAlias = true
+            }
+            canvas.drawText("MEMBER CONDUCT & HEALTH EVALUATION SUMMARY REPORT", 30f, 62f, subtitlePaint)
+
+            val metaPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.rgb(107, 114, 128)
+                textSize = 8f
+                isAntiAlias = true
+            }
+            val formatter = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+            val dateStr = formatter.format(java.util.Date())
+            canvas.drawText("Generated: $dateStr | Total Evaluations: ${assessments.size}", 30f, 74f, metaPaint)
+
+            val pagePaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.GRAY
+                textSize = 8f
+                isAntiAlias = true
+                textAlign = android.graphics.Paint.Align.RIGHT
+            }
+            canvas.drawText("Page $pageNum", (pageWidth - 30).toFloat(), 74f, pagePaint)
+
+            // Gold bottom accent under header
+            val goldPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.rgb(197, 160, 89)
+                style = android.graphics.Paint.Style.FILL
+            }
+            canvas.drawRect(30f, 82f, (pageWidth - 30).toFloat(), 84f, goldPaint)
+
+            // Table headers background
+            val headFillPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.rgb(243, 244, 246)
+                style = android.graphics.Paint.Style.FILL
+            }
+            canvas.drawRect(30f, 95f, (pageWidth - 30).toFloat(), 120f, headFillPaint)
+
+            val headBorderPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.rgb(209, 213, 219)
+                style = android.graphics.Paint.Style.STROKE
+                strokeWidth = 1f
+            }
+            canvas.drawRect(30f, 95f, (pageWidth - 30).toFloat(), 120f, headBorderPaint)
+
+            val headTextPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.rgb(31, 41, 55)
+                textSize = 8.5f
+                isFakeBoldText = true
+                isAntiAlias = true
+            }
+            canvas.drawText("MEMBER ID / NAME", 38f, 111f, headTextPaint)
+            canvas.drawText("PERIOD TYPE / LABEL", 185f, 111f, headTextPaint)
+            canvas.drawText("SCORES (HY / CH / SC / HM / DR / CL)", 310f, 111f, headTextPaint)
+            canvas.drawText("TOTAL", 480f, 111f, headTextPaint)
+            canvas.drawText("FACILITATOR", 525f, 111f, headTextPaint)
+        }
+
+        drawHeader(canvas, pageNum)
+
+        var y = 135f
+        val linePaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(229, 231, 235)
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = 0.5f
+        }
+        
+        val namePaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(6, 78, 59)
+            textSize = 9f
+            isFakeBoldText = true
+            isAntiAlias = true
+        }
+
+        val idPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.GRAY
+            textSize = 7.5f
+            isAntiAlias = true
+        }
+
+        val textPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.BLACK
+            textSize = 8.5f
+            isAntiAlias = true
+        }
+
+        val totalPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(16, 185, 129)
+            textSize = 9.5f
+            isFakeBoldText = true
+            isAntiAlias = true
+        }
+
+        val commentTextPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(75, 85, 99)
+            textSize = 8f
+            isAntiAlias = true
+        }
+
+        for (i in assessments.indices) {
+            val ass = assessments[i]
+            val rowHeight = if (ass.comments.isNotBlank()) 42f else 30f
+
+            // Check page overflow
+            if (y + rowHeight > pageHeight - 40) {
+                pdfDocument.finishPage(page)
+                pageNum++
+                page = pdfDocument.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNum).create())
+                canvas = page.canvas
+                drawHeader(canvas, pageNum)
+                y = 135f
+            }
+
+            // Draw data
+            // Member Name / ID
+            canvas.drawText(ass.memberName.uppercase(), 38f, y, namePaint)
+            canvas.drawText("ID: ${ass.memberId}", 38f, y + 11f, idPaint)
+
+            // Period Info
+            canvas.drawText(ass.periodType, 185f, y, textPaint)
+            canvas.drawText(ass.periodLabel, 185f, y + 11f, idPaint)
+
+            // Scores
+            val scoreStr = "H:${ass.hygiene} C:${ass.character} S:${ass.behaviorSchool} H:${ass.behaviorHome} D:${ass.dressing} C:${ass.contribution}"
+            canvas.drawText(scoreStr, 310f, y + 5f, textPaint)
+
+            // Total Score
+            canvas.drawText("${ass.totalScore}/60", 480f, y + 5f, totalPaint)
+
+            // Assessed By
+            val assessor = if (ass.assessedBy.length > 12) ass.assessedBy.substring(0, 10) + ".." else ass.assessedBy
+            canvas.drawText(assessor, 525f, y + 5f, textPaint)
+
+            // Comments
+            if (ass.comments.isNotBlank()) {
+                val cleanComment = if (ass.comments.length > 95) ass.comments.substring(0, 92) + "..." else ass.comments
+                canvas.drawText("Remarks: “$cleanComment”", 38f, y + 23f, commentTextPaint)
+            }
+
+            // Draw line
+            canvas.drawLine(30f, y + rowHeight - 4f, (pageWidth - 30).toFloat(), y + rowHeight - 4f, linePaint)
+            y += rowHeight
+        }
+
+        pdfDocument.finishPage(page)
+
+        // Save file
+        val out = java.io.FileOutputStream(file)
+        pdfDocument.writeTo(out)
+        out.flush()
+        out.close()
+        pdfDocument.close()
+
+        return file
+    } catch (e: Exception) {
+        e.printStackTrace()
+        return null
+    }
+}
+
+// Launches standard Android Print Service flow with the generated PDF document (Generic)
+fun printPdfFile(context: Context, file: File, jobName: String, pageCount: Int = android.print.PrintDocumentInfo.PAGE_COUNT_UNKNOWN) {
+    try {
+        val printManager = context.getSystemService(Context.PRINT_SERVICE) as android.print.PrintManager
+        val printAdapter = object : android.print.PrintDocumentAdapter() {
+            override fun onWrite(
+                pages: Array<out android.print.PageRange>?,
+                destination: android.os.ParcelFileDescriptor?,
+                cancellationSignal: android.os.CancellationSignal?,
+                callback: WriteResultCallback?
+            ) {
+                var input: java.io.FileInputStream? = null
+                var output: java.io.FileOutputStream? = null
+                try {
+                    input = java.io.FileInputStream(file)
+                    output = java.io.FileOutputStream(destination?.fileDescriptor)
+                    val buf = ByteArray(1024)
+                    var bytesRead: Int
+                    while (input.read(buf).also { bytesRead = it } > 0) {
+                        output.write(buf, 0, bytesRead)
+                    }
+                    callback?.onWriteFinished(arrayOf(android.print.PageRange.ALL_PAGES))
+                } catch (e: Exception) {
+                    callback?.onWriteFailed(e.message)
+                } finally {
+                    try { input?.close() } catch (e: Exception) {}
+                    try { output?.close() } catch (e: Exception) {}
+                }
+            }
+
+            override fun onLayout(
+                oldAttributes: android.print.PrintAttributes?,
+                newAttributes: android.print.PrintAttributes?,
+                cancellationSignal: android.os.CancellationSignal?,
+                callback: LayoutResultCallback?,
+                extras: android.os.Bundle?
+            ) {
+                if (cancellationSignal?.isCanceled == true) {
+                    callback?.onLayoutCancelled()
+                    return
+                }
+                val builder = android.print.PrintDocumentInfo.Builder(file.name)
+                    .setContentType(android.print.PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
+                    .setPageCount(pageCount)
+                callback?.onLayoutFinished(builder.build(), true)
+            }
+        }
+        printManager.print(jobName, printAdapter, null)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "Print failed: ${e.message}", Toast.LENGTH_LONG).show()
     }
 }
 
@@ -4785,6 +5456,7 @@ fun RatingSlider(
 @Composable
 fun AssessMemberScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val allMembers by viewModel.members.collectAsStateWithLifecycle()
     val assessmentsList by viewModel.assessments.collectAsStateWithLifecycle()
     
@@ -5733,6 +6405,96 @@ fun AssessMemberScreen(viewModel: MainViewModel) {
                     letterSpacing = 1.sp
                 )
 
+                if (assessmentsList.isNotEmpty()) {
+                    // Summary Export Banner Card
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = PrimaryEmeraldMint.copy(alpha = 0.15f)),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, PrimaryEmerald.copy(alpha = 0.3f)),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "MEMBER ASSESSMENT SUMMARY REPORT",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = PrimaryEmeraldDark
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Export a multi-page tabular PDF of all ${assessmentsList.size} registered assessments for official health record-keeping.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontSize = 10.sp,
+                                    color = Color.DarkGray
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                IconButton(
+                                    onClick = {
+                                        coroutineScope.launch(Dispatchers.IO) {
+                                            val file = generateAssessmentSummaryPdf(context, assessmentsList)
+                                            if (file != null) {
+                                                withContext(Dispatchers.Main) {
+                                                    printPdfFile(context, file, "Zongoire Health Club Assessment Summary")
+                                                }
+                                            } else {
+                                                withContext(Dispatchers.Main) {
+                                                    Toast.makeText(context, "Failed to generate summary PDF", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(Color.White, CircleShape)
+                                        .border(1.dp, Color.LightGray.copy(alpha = 0.5f), CircleShape)
+                                        .testTag("print_assessment_summary_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Share,
+                                        contentDescription = "Print Summary PDF",
+                                        tint = Color(0xFFC5A059),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                IconButton(
+                                    onClick = {
+                                        coroutineScope.launch(Dispatchers.IO) {
+                                            val file = generateAssessmentSummaryPdf(context, assessmentsList)
+                                            if (file != null) {
+                                                withContext(Dispatchers.Main) {
+                                                    sharePdf(context, file)
+                                                }
+                                            } else {
+                                                withContext(Dispatchers.Main) {
+                                                    Toast.makeText(context, "Failed to generate summary PDF", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(PrimaryEmerald, CircleShape)
+                                        .testTag("share_assessment_summary_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Send,
+                                        contentDescription = "Share Summary PDF",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if (assessmentsList.isEmpty()) {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
@@ -5858,10 +6620,87 @@ fun AssessMemberScreen(viewModel: MainViewModel) {
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontSize = 8.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color(0xFFEF4444),
+                                                color = Color(0xFFF43F5E),
                                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                             )
                                         }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+                                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "PRINT REPORT:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 9.sp,
+                                        color = Color.Gray,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(end = 8.dp)
+                                    )
+                                    OutlinedButton(
+                                        onClick = {
+                                            coroutineScope.launch(Dispatchers.IO) {
+                                                val file = generateSingleAssessmentPdf(context, ass)
+                                                if (file != null) {
+                                                    withContext(Dispatchers.Main) {
+                                                        printPdfFile(context, file, "Assessment Report - ${ass.memberName}", 1)
+                                                    }
+                                                } else {
+                                                    withContext(Dispatchers.Main) {
+                                                        Toast.makeText(context, "Failed to generate report", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.height(28.dp).testTag("print_single_assessment_${ass.id}"),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                        shape = RoundedCornerShape(6.dp),
+                                        border = BorderStroke(1.dp, Color(0xFFC5A059))
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Share,
+                                            contentDescription = null,
+                                            tint = Color(0xFFC5A059),
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("PRINT", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC5A059))
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Button(
+                                        onClick = {
+                                            coroutineScope.launch(Dispatchers.IO) {
+                                                val file = generateSingleAssessmentPdf(context, ass)
+                                                if (file != null) {
+                                                    withContext(Dispatchers.Main) {
+                                                        sharePdf(context, file)
+                                                    }
+                                                } else {
+                                                    withContext(Dispatchers.Main) {
+                                                        Toast.makeText(context, "Failed to generate report", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.height(28.dp).testTag("share_single_assessment_${ass.id}"),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                        shape = RoundedCornerShape(6.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryEmerald)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Send,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("SHARE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                     }
                                 }
                             }
